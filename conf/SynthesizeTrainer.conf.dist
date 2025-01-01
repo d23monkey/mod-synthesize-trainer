@@ -1,0 +1,47 @@
+[worldserver]
+
+###################################################################################################
+#   SynthesizeTrainer
+###################################################################################################
+
+#  
+#  SynthesizeTrainer.Enable
+#		Description: Enable the module
+#  		Default: 1 - (Enabled)
+#			 	 0 - (Disabled)
+#
+
+SynthesizeTrainer.Enable = 1
+
+#  
+#  SynthesizeTrainer.Announce
+#  		Description: Announce the modules when the player login in
+#  		Default: 1 - (Enabled)
+#				 0 - (Disabled)
+#
+
+SynthesizeTrainer.Announce = 1
+
+#  
+#  DualSpec.Cost
+#  		Description: Cost of unlock dual talents
+#  		Default: 50 - (50 Gold)
+#
+
+DualSpec.Cost = 50
+
+#
+#  ResetTalents.Cost
+#  		Description: Cost of Reset Talents
+#  		Default: 1 - (1 Gold)
+#
+
+ResetTalents.Cost = 1
+
+#
+#  ResetPetTalents.Cost
+#  		Description: Cost of Reset Pet Talents
+#  		Default: 1 - (1 Gold)
+#
+
+ResetPetTalents.Cost = 1

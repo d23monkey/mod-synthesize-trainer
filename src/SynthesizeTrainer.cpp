@@ -5,6 +5,48 @@
 #include "SpellMgr.h"
 #include "WorldSession.h"
 #include "Pet.h"
+#include "Configuration/Config.h"
+
+bool SynthesizeTrainerEnableModule;
+bool SynthesizeTrainerAnnounceModule;
+uint32 DualSpecCost;
+uint32 ResetTCost;
+uint32 ResetTalentsCost;
+uint32 ResetPetTalentsCost;
+
+class SynthesizeTrainerConfig : public WorldScript
+{
+public:
+    SynthesizeTrainerConfig() : WorldScript("SynthesizeTrainerConfig_conf") { }
+
+    void OnBeforeConfigLoad(bool reload) override
+    {
+        if (!reload) {
+            SynthesizeTrainerEnableModule = sConfigMgr->GetOption<bool>("SynthesizeTrainer.Enable", 1);
+            SynthesizeTrainerAnnounceModule = sConfigMgr->GetOption<bool>("SynthesizeTrainer.Announce", 1);
+            DualSpecCost = sConfigMgr->GetOption<uint32>("DualSpec.Cost", 50);
+            ResetTalentsCost = sConfigMgr->GetOption<uint32>("ResetTalents.Cost", 1);
+            ResetPetTalentsCost = sConfigMgr->GetOption<uint32>("ResetPetTalents.Cost", 1);
+        }
+    }
+};
+
+
+class SynthesizeTrainerAnnounce : public PlayerScript
+{
+public:
+
+    SynthesizeTrainerAnnounce() : PlayerScript("SynthesizeTrainerAnnounce") {}
+
+    void OnLogin(Player* player)
+    {
+        // Announce Module
+        if (SynthesizeTrainerAnnounceModule)
+        {
+            ChatHandler(player->GetSession()).SendSysMessage("本服务器正在运行 |cff4CFF00综合训练师 |r模块.");
+        }
+    }
+};
 
 class CreatureScript_SynthesizeTrainer : public CreatureScript
 {
@@ -14,25 +56,38 @@ public:
 	
     bool OnGossipHello(Player *player, Creature *creature) override
     {
-        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Achievement_BG_trueAVshutout:25|t职业技能", 1, 1);
-        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Trade_Tailoring:25|t商业技能", 1, 2);
-        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Ability_Mount_Dreadsteed:25|t骑术技能", 1, 3);
-        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Ability_DualWield:25|t武器技能", 1, 4);
-        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Spell_Holy_DevineAegis:25|t开双天赋", 1, 5, "你确定要开双天赋吗？", 0, false);
-		AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Spell_Arcane_MindMastery:25|t重置天赋", 1, 6, "你确定要重置天赋吗？", 0, false);
-		AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Ability_Hunter_SeparationAnxiety:25|t重置宠物天赋", 1, 7, "你确定要重置宠物天赋吗？", 0, false);
-		AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/INV_Misc_Rune_01:25|t炉石绑定", 1, 8);
+		if (!SynthesizeTrainerEnableModule)
+        {
+            return false;
+        }
+
+        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Achievement_BG_trueAVshutout:25|t职业技能训练", 1, 1);
+        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Ability_DualWield:25|t武器技能训练", 1, 2);
+        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Ability_Mount_Charger:25|t骑术技能训练", 1, 3);
+        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Trade_Tailoring:25|t商业技能训练", 1, 4);
+        AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Spell_Holy_DevineAegis:25|t开角色双天赋", 1, 5, "你确定要开双天赋吗？", 0, false);
+		AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Spell_Arcane_MindMastery:25|t重置角色天赋", 1, 6, "你确定要重置天赋吗？", 0, false);		
+		if (player->getClass() == CLASS_HUNTER)
+        {
+			AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Ability_Hunter_SeparationAnxiety:25|t重置宠物天赋", 1, 7, "你确定要重置宠物天赋吗？", 0, false);
+            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/Ability_Hunter_Pet_Wolf:25|t 打开兽栏", 1, 8);
+        }
+		AddGossipItemFor(player, GOSSIP_ICON_CHAT, "|TInterface/ICONS/INV_Misc_Rune_01:25|t炉石绑定", 1, 9);
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature);
         return true;
     }
 
     bool OnGossipSelect(Player *player, Creature *creature, uint32 Sender, uint32 action) override
     {
+		if (!SynthesizeTrainerEnableModule)
+        {
+            return false;
+        }
         player->PlayerTalkClass->ClearMenus();
 
         if (Sender == 1)
         {
-            if (action == 1)
+            if (action == 1)//职业技能
             {
                 uint32 npcspellid = 0;
                 switch (player->getClass())
@@ -48,95 +103,151 @@ public:
                     case CLASS_WARLOCK:    npcspellid = 988; break;
                     case CLASS_DRUID:    npcspellid = 3036; break;
                 }
-                SendTrainerList(player, creature->GetGUID(), npcspellid);
+                SendNewTrainerList(player, creature->GetGUID(), npcspellid);
                 CloseGossipMenuFor(player);
             }
-            else if (action == 2)
+            else if (action == 2)//武器技能
             {
-                learnPSkill(player, creature); 
+                SendNewTrainerList(player, creature->GetGUID(), 190017);
+				CloseGossipMenuFor(player);
             }
-            else if (action == 3)
+            else if (action == 3)//骑术
             {
-                SendTrainerList(player, creature->GetGUID(), 31238);
+                SendNewTrainerList(player, creature->GetGUID(), 31238);
                 CloseGossipMenuFor(player);
             }
-            else if (action == 4)
+            else if (action == 4)//商业技能
             {
-                SendTrainerList(player, creature->GetGUID(), 190017);
-                CloseGossipMenuFor(player);
+                SendlearnSkill(player, creature);
             }
-            else if (action == 5)
+            else if (action == 5)//双天赋/*双天赋SPELL 63680 63624*/
             {
-                // Cast spells that teach dual spec
-                // Both are also ImplicitTarget self and must be cast by player
-                if (player->GetSpecsCount() > 1)
+				if (player->HasEnoughMoney(DualSpecCost * 10000))
                 {
-                    ChatHandler(player->GetSession()).PSendSysMessage("你已经学会了双天赋，不能重复学习！");
-                }
-                else if (player->GetLevel() < sWorld->getIntConfig(CONFIG_MIN_DUALSPEC_LEVEL))
-                {
-                    ChatHandler(player->GetSession()).PSendSysMessage(" 你的等级还不足{}级，还不能开启双天赋!", sWorld->getIntConfig(CONFIG_MIN_DUALSPEC_LEVEL));
-                }
-                else
-                {
-                    player->CastSpell(player, 63680, true, NULL, NULL, player->GetGUID());
-                    player->CastSpell(player, 63624, true, NULL, NULL, player->GetGUID());
-
-                    ChatHandler(player->GetSession()).PSendSysMessage("你成功学会了双天赋!");
-                };
-                player->PlayerTalkClass->SendCloseGossip();
-            }
-			else if (action == 6)
-            {
-                uint8 specPoints[3] = {0, 0, 0};
-                player->GetTalentTreePoints(specPoints);
-                uint8 totalPoints = specPoints[0] + specPoints[1] + specPoints[2];
-
-				//printf("Talent points in trees: %u, %u, %u\n", specPoints[0], specPoints[1], specPoints[2]);
-				//printf("Total talent points: %u\n", totalPoints);
-
-                if (totalPoints > 0)//判断是否点选了天赋
-                {
-                    player->resetTalents(true);
-                    player->SendTalentsInfoData(false);
-                    player->CastSpell(player, 14867, true);
-                    ChatHandler(player->GetSession()).PSendSysMessage("你的天赋已被重置！");
-                }
-                else
-                {
-					ChatHandler(player->GetSession()).PSendSysMessage("你还没有分配天赋点！");
-                }
-                CloseGossipMenuFor(player);
-            }
-            else if (action == 7)
-            {
-                if (player->getClass() == CLASS_HUNTER && player->GetPet())
-                {
-                    Pet* pet = player->GetPet(); // 获取玩家的宠物
-                    if (pet && pet->m_usedTalentCount > 0)//判断宠物是否点了天赋
+                    // Cast spells that teach dual spec
+                    // Both are also ImplicitTarget self and must be cast by player
+                    if (player->GetSpecsCount() > 1)
                     {
-                        player->ResetPetTalents();
-                        ChatHandler(player->GetSession()).PSendSysMessage("你的宠物天赋已被重置！");
+                        ChatHandler(player->GetSession()).PSendSysMessage("你已经学会了双天赋，不能重复学习！");
+                    }
+                    else if (player->GetLevel() < sWorld->getIntConfig(CONFIG_MIN_DUALSPEC_LEVEL))
+                    {
+                        ChatHandler(player->GetSession()).PSendSysMessage("你的等级还不足 {} 级，还不能开启双天赋!", sWorld->getIntConfig(CONFIG_MIN_DUALSPEC_LEVEL));
                     }
                     else
                     {
-                        ChatHandler(player->GetSession()).PSendSysMessage("你的宠物没有分配天赋点，无需重置。");
+                        player->CastSpell(player, 63680, true, NULL, NULL, player->GetGUID());
+                        player->CastSpell(player, 63624, true, NULL, NULL, player->GetGUID());
+					    player->ModifyMoney(-(DualSpecCost * 10000), true);
+                        ChatHandler(player->GetSession()).PSendSysMessage("恭喜,开启双天赋成功!");
+					    CloseGossipMenuFor(player);
+                    };
+                    player->PlayerTalkClass->SendCloseGossip();
+                }
+                else
+                {
+					ChatHandler(player->GetSession()).PSendSysMessage("|CFFFF0000您的金币不足 {} 枚.不能开启双天赋!", DualSpecCost);
+					CloseGossipMenuFor(player);
+                }
+            }
+			else if (action == 6)//重置天赋
+            {
+				ResetTCost = player->resetTalentsCost();
+                if (player->HasEnoughMoney(ResetTCost))
+                {
+                    uint8 specPoints[3] = {0, 0, 0};
+                    player->GetTalentTreePoints(specPoints);
+                    uint8 totalPoints = specPoints[0] + specPoints[1] + specPoints[2];
+
+				    //printf("Talent points in trees: %u, %u, %u\n", specPoints[0], specPoints[1], specPoints[2]);
+				    //printf("Total talent points: %u\n", totalPoints);
+
+                    if (totalPoints > 0)//判断是否点选了天赋
+                    {
+                        player->resetTalents(false);//重置玩家的天赋
+					    player->InitTalentForLevel();//初始化玩家的天赋点数
+                        player->SendTalentsInfoData(false);// 天赋信息同步至客户端
+                        //player->CastSpell(player, 14867, true);
+					    player->ModifyMoney(-(ResetTCost), true);//扣费                        
+                        ChatHandler(player->GetSession()).PSendSysMessage("你的天赋已被重置！");
+						CloseGossipMenuFor(player);
+                    }
+                    else
+                    {
+					    ChatHandler(player->GetSession()).PSendSysMessage("你还没有分配天赋点！");
+						CloseGossipMenuFor(player);
                     }
                 }
                 else
                 {
-                    ChatHandler(player->GetSession()).PSendSysMessage("你还没有宠物！");
+                    ChatHandler(player->GetSession()).PSendSysMessage("|CFFFF0000您的金币不足 {} 枚, 不能重置天赋!", ResetTCost);
+					CloseGossipMenuFor(player);
+                }
+            }
+            else if (action == 7)//重置宠物天赋
+            {
+                /*if (player->getClass() == CLASS_HUNTER && player->GetPet())
+                {
+					if (player->getClass() != CLASS_HUNTER)
+                    {
+                        ChatHandler(player->GetSession()).PSendSysMessage("|CFFFF0000 您不是猎人.不能重置!");
+                        CloseGossipMenuFor(player);
+                        return false;
+                    }*/
+                Pet* pet = player->GetPet(); // 获取玩家的宠物
+                if (!pet || !pet->IsInWorld())
+                {
+                    ChatHandler(player->GetSession()).PSendSysMessage("|CFFFF0000您还没有宠物.不需要重置!");
+                    CloseGossipMenuFor(player);
+                    return false;
+                }
+                if (pet->m_usedTalentCount > 0)//判断宠物是否点了天赋
+                {
+                    if (player->HasEnoughMoney(ResetPetTalentsCost * 10000))
+                    {
+                        player->ResetPetTalents();
+                        player->SendTalentsInfoData(true);
+                        player->ModifyMoney(-(ResetPetTalentsCost * 10000), true);//扣费
+                        ChatHandler(player->GetSession()).PSendSysMessage("你的宠物天赋重置完毕！");
+                        CloseGossipMenuFor(player);
+                    }
+                    else
+                    {
+                        ChatHandler(player->GetSession()).PSendSysMessage("|CFFFF0000您的金币不足 {} 枚, 不能重置!", ResetPetTalentsCost);
+                        CloseGossipMenuFor(player);
+                    }
+                }
+                else
+                {
+                    ChatHandler(player->GetSession()).PSendSysMessage("你的宠物没有分配天赋点，无需重置。");
+                    /*}
+                }
+                else
+                {
+                    ChatHandler(player->GetSession()).PSendSysMessage("你还没有宠物！");*/
                 }
                 CloseGossipMenuFor(player);
             }
-            else if (action == 8)
+			else if (action == 8)//兽栏
+            {
+                /*if (player->getClass() == CLASS_HUNTER)
+                {*/
+                    player->GetSession()->SendStablePet(creature->GetGUID());
+                /*}
+                else
+                {
+					ChatHandler(player->GetSession()).PSendSysMessage("|CFFFF0000 您不是猎人......");
+					CloseGossipMenuFor(player);
+                }*/
+            }
+            else if (action == 9)//炉石
             {
 				player->SetBindPoint(creature->GetGUID());
                 player->PlayerTalkClass->SendCloseGossip();
             }
         }
         else if (Sender == 2) {
-            uint32 npcskillid = 0; //技能训练师ID
+            uint32 npcskillid = 0; //技能训练师ID初始化
             switch (action)
             {
                 case 1:     npcskillid = 28698; break; //采矿
@@ -154,44 +265,45 @@ public:
                 case 13:    npcskillid = 28742; break; //钓鱼
                 case 14:    npcskillid = 28706; break; //急救
             }
-            SendTrainerList(player, creature->GetGUID(), npcskillid);
+            SendNewTrainerList(player, creature->GetGUID(), npcskillid);
             CloseGossipMenuFor(player);
         }
         return true;
     }
    //专业训练菜单
-    static void learnPSkill(Player* player, Creature* creature)
+    static void SendlearnSkill(Player* player, Creature* creature)
     {
         player->PlayerTalkClass->ClearMenus();
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "采矿训练", 2, 1);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "草药训练", 2, 2);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "炼金训练", 2, 3);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "附魔训练", 2, 4);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "锻造训练", 2, 5);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "裁缝训练", 2, 6);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "工程训练", 2, 7);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "珠宝训练", 2, 8);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "制皮训练", 2, 9);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "剥皮训练", 2, 10);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "铭文训练", 2, 11);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "烹饪训练", 2, 12);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "钓鱼训练", 2, 13);
-        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "急救训练", 2, 14);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Trade_Mining:25|t采矿训练", 2, 1);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Trade_Herbalism:25|t草药训练", 2, 2);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Trade_Alchemy:25|t炼金训练", 2, 3);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Trade_Engraving:25|t附魔训练", 2, 4);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Trade_BlackSmithing:25|t锻造训练", 2, 5);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Trade_Tailoring:25|t裁缝训练", 2, 6);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Trade_Engineering:25|t工程训练", 2, 7);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/INV_Misc_Gem_01:25|t珠宝训练", 2, 8);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Trade_LeatherWorking:25|t制皮训练", 2, 9);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/INV_Misc_Pelt_Wolf_01:25|t剥皮训练", 2, 10);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/INV_Inscription_Tradeskill01:25|t铭文训练", 2, 11);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/INV_Misc_Food_15:25|t烹饪训练", 2, 12);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Trade_Fishing:25|t钓鱼训练", 2, 13);
+        AddGossipItemFor(player, GOSSIP_ICON_TRAINER, "|TInterface/ICONS/Spell_Holy_SealOfSacrifice:25|t急救训练", 2, 14);
         SendGossipMenuFor(player, DEFAULT_GOSSIP_MESSAGE, creature);
     }
 private:
-    static void SendTrainerList(Player* player, ObjectGuid guid, uint32 npcspellid)
+    //重构训练技能函数
+    static void SendNewTrainerList(Player* player, ObjectGuid guid, uint32 npcspellid)
     {
         WorldSession* session = player->GetSession();
         if (!session) return;
         std::string strTitle = session->GetAcoreString(LANG_NPC_TAINER_HELLO);
 
-        LOG_DEBUG("network", "WORLD: SendTrainerList");
+        LOG_DEBUG("network", "WORLD: SendNewTrainerList");
         Creature* unit = player->GetMap()->GetCreature(guid);
 
         if (!unit)
         {
-            LOG_DEBUG("network", "WORLD: SendTrainerList - Unit ({}) not found or you can not interact with him.", guid.ToString());
+            LOG_DEBUG("network", "WORLD: SendNewTrainerList - Unit ({}) not found or you can not interact with him.", guid.ToString());
             return;
         }
 
@@ -203,14 +315,14 @@ private:
 
         if (!ci)
         {
-            LOG_DEBUG("network", "WORLD: SendTrainerList - ({}) NO CREATUREINFO!", guid.ToString());
+            LOG_DEBUG("network", "WORLD: SendNewTrainerList - ({}) NO CREATUREINFO!", guid.ToString());
             return;
         }
         TrainerSpellData const* trainer_spells =  sObjectMgr->GetNpcTrainerSpells(npcspellid);
 
         if (!trainer_spells)
         {
-            LOG_DEBUG("network", "WORLD: SendTrainerList - Training spells not found for creature ({})", guid.ToString());
+            LOG_DEBUG("network", "WORLD: SendNewTrainerList - Training spells not found for creature ({})", guid.ToString());
             return;
         }
 
@@ -307,5 +419,7 @@ private:
 
 void AddSC_SynthesizeTrainer()
 {
+	new SynthesizeTrainerConfig();
     new CreatureScript_SynthesizeTrainer();
+	new SynthesizeTrainerAnnounce();
 }
